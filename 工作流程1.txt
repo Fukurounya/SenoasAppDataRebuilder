@@ -1,0 +1,12 @@
+现在开始编写这个项目的程序,这是设计工作流程:
+
+启动时,将打开MainWindow(窗口名为App UserData ReBuilder),检查本地是否注册有WinRAR命令行工具,如无,退回到程序目录下提供的UnRAR,在MainStatusLabel警告,并禁用"开始保存"(StartSaveBT)功能及按钮;WinRAR功能正常,就正常启动并在MainStatusLabel交替显示"就绪"(MainProgressBar显示为100%)和"后台无进程"(MainProgressBar显示为0%),以及之后也注意维护MainProgressBar核心进程运行指示.
+
+读取程序目录下的Data文件(使用UTF-8读写,若无则创建,文件类型为XML,实际创建文件时不带后缀名),将历史存取目录显示在SDAutoFindComboBox(如果在此处输入,则视为搜索历史目录);
+注册CompassLv,对应其所在挡位,1-7对应在CompassLvText显示储存、最快、较快、标准、较好、最好;
+
+点击按钮SDSelectBT时,拉起一个文件管理器的选择文件夹窗口,默认从%USERPROFILE%\AppData\开始,如不存在则在MainStatusLabel抛出"找不到当前用户的程序数据文件夹",选择后将目录显示在SDinputbox;点击按钮TDSelectBT时同理,默认开始目录为C:\Program Files\
+
+点击DataFileOpenBT时,将程序目录下的Data文件复制到%TEMP%\Senoa\DataReBuilder\并通过.txt后缀名的默认程序打开(通常是记事本或VSCode),并在MainStatusLabel提示"正在显示数据快照",在关闭窗口时销毁这个复制到tmp的Data文件,在关闭程序时销毁DataReBuilder文件夹(不包括Senoa以及其下的其他文件夹)
+
+点击SDAutoFind按钮时,在%USERPROFILE%\AppData\LocalLow\和%USERPROFILE%\AppData\Roaming寻找符合文件radarlist文件(txt,UTF-8)中记录的文件夹名,在ComboBoxSelect创建新项目"匹配到的目录",选中时在SDAutoFindComboBox显示这些匹配到的文件夹路径

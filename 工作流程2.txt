@@ -1,0 +1,5 @@
+这是ReBuilder和Saver的工作流程:
+
+按下开始保存后,将CompressOF、CompassLv、FilestampOF、TimestampOF的状态传输给SaverWindow,创建窗口时注意自动修改窗口标识,防止多任务时窗口名碰撞;SaverWindow拉起、bash就绪后,开始按照参数无UI调用WinRAR,无论前述参数传递如何,都传递"校验文件完整性"参数,如果FilestampOF勾选,TimestampOF也绑定勾选.如果压缩,将文件压缩到%TEMP%\Senoa\DataReBuilder\Cache,完成后,更新这个文件的Data,再复制,复制后销毁,不压缩则跳过sha校验和Cache目录行为,使用robocopy转移文件,性能参数如/MT你抒情定义或编写自动处理逻辑.
+
+恢复同理,每次启动程序时,读取Data文件,如文件不存在,从MainProgressBar抛出错误,然后建立Data,恢复时,参照保存时的设置,拷贝到目标位置,如果是压缩文件,复制到%TEMP%\Senoa\DataReBuilder\Cache,校验sha,随后解压,再拷贝

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 运行时需要在程序目录找到随附的 UnRAR。 -->
+    <None Update="UnRAR.exe" CopyToOutputDirectory="PreserveNewest" />
+
+    <!-- radarlist 直接编译进程序集，运行时不再依赖外部副本。 -->
+    <None Remove="radarlist" />
+    <EmbeddedResource Include="radarlist" LogicalName="AppDataRebuilder.radarlist" />
+  </ItemGroup>
+
+</Project>
