@@ -753,7 +753,17 @@ namespace AppDataRebuilder
                 }
             }
 
-            var selectedDirectory = PickFolder("选择目标储存目录", programFiles);
+            var currentTarget = textBox2.Text.Trim();
+            var initialDirectory = Directory.Exists(currentTarget)
+                ? currentTarget
+                : File.Exists(currentTarget)
+                    ? Path.GetDirectoryName(currentTarget) ?? programFiles
+                    : programFiles;
+
+            var selectedDirectory = PickFolder(
+                "选择目标储存目录（压缩文件由 Data 自动定位）",
+                initialDirectory);
+
             if (selectedDirectory is null)
                 return;
 
@@ -775,7 +785,10 @@ namespace AppDataRebuilder
             return dialog.ShowDialog(this) == DialogResult.OK ? dialog.SelectedPath : null;
         }
 
-        private void FillSourceDirectory(string directory, bool matchRestoreRecord)
+        private void FillSourceDirectory(
+            string directory,
+            bool matchRestoreRecord,
+            bool fillTargetFromRecord = false)
         {
             _suppressSourceTextChanged = true;
             try
@@ -792,16 +805,34 @@ namespace AppDataRebuilder
 
             ResetRestoreConfirmation();
 
-            if (matchRestoreRecord)
+            var record = matchRestoreRecord
+                ? _dataStore?.GetLatestRestorableRecord(directory)
+                : null;
+
+            if (record is not null
+                && (fillTargetFromRecord || string.IsNullOrWhiteSpace(textBox2.Text))
+                && !string.IsNullOrWhiteSpace(record.TargetDirectory))
             {
-                var record = _dataStore?.GetLatestRestorableRecord(directory);
-                if (record is not null)
-                {
-                    ShowTemporaryStatus(
-                        $"已匹配记录（{record.Time:yyyy-MM-dd HH:mm}）",
-                        false,
-                        4000);
-                }
+                // 回填该记录对应的目标储存目录，便于看到 .rar 所在的文件夹。
+                textBox2.Text = record.TargetDirectory;
+            }
+
+            if (!Directory.Exists(directory))
+            {
+                // 允许选择已删除的历史目录；恢复时 BackupService 会重新创建目标目录。
+                ShowTemporaryStatus(
+                    record is not null
+                        ? "该目录已不存在，已匹配保存记录；恢复时会自动创建"
+                        : "该目录已不存在，没有找到对应保存记录",
+                    true,
+                    5000);
+            }
+            else if (record is not null)
+            {
+                ShowTemporaryStatus(
+                    $"已匹配记录（{record.Time:yyyy-MM-dd HH:mm}）",
+                    false,
+                    4000);
             }
         }
 
@@ -873,10 +904,22 @@ namespace AppDataRebuilder
             if (source == DirectorySource.Matched)
                 return new List<string>(_matchedDirectories);
 
-            if (_dataStore is not null)
-                return new List<string>(_dataStore.HistoryDirectories);
+            if (_dataStore is null)
+                return new List<string>();
 
-            return new List<string>();
+            // 目录历史与 Data 操作记录合并，避免历史区缺失但操作记录仍在时无法回填。
+            var directories = new List<string>();
+            directories.AddRange(_dataStore.HistoryDirectories);
+
+            foreach (var record in _dataStore.Operations)
+            {
+                if (!string.IsNullOrWhiteSpace(record.SourceDirectory))
+                    directories.Add(record.SourceDirectory);
+            }
+
+            return directories
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
 
         private bool IsMatchedSourceSelected()
@@ -904,13 +947,7 @@ namespace AppDataRebuilder
             if (SDAutoFindComboBox.SelectedItem is not string directory)
                 return;
 
-            if (!Directory.Exists(directory))
-            {
-                ShowTemporaryStatus("该目录已不存在：" + directory, true, 5000);
-                return;
-            }
-
-            FillSourceDirectory(directory, matchRestoreRecord: true);
+            FillSourceDirectory(directory, matchRestoreRecord: true, fillTargetFromRecord: true);
 
             // 从“匹配到的目录”里选中项时，同时把它加入历史目录。
             if (_directorySource == DirectorySource.Matched)
@@ -943,7 +980,7 @@ namespace AppDataRebuilder
                     _suppressComboEvents = false;
                 }
 
-                FillSourceDirectory(match, matchRestoreRecord: true);
+                FillSourceDirectory(match, matchRestoreRecord: true, fillTargetFromRecord: true);
 
                 if (_directorySource == DirectorySource.Matched)
                     RememberDirectory(match);
