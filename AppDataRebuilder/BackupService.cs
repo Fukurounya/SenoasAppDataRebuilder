@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Text.RegularExpressions;
 
 namespace AppDataRebuilder
@@ -26,6 +27,7 @@ namespace AppDataRebuilder
                 TargetDirectory = settings.TargetDirectory,
                 BackupPath = settings.BackupPath,
                 Compressed = settings.Compress,
+                UseZip = settings.UseZip,
                 CompressionLevel = settings.CompressionLevel,
                 KeepTimestamps = settings.KeepTimestamps,
                 KeepFileAttributes = settings.KeepFileAttributes,
@@ -39,24 +41,41 @@ namespace AppDataRebuilder
 
                 var cacheDirectory = Path.Combine(settings.CacheRoot, settings.JobId.ToString("N"));
                 Directory.CreateDirectory(cacheDirectory);
-                var cacheArchivePath = Path.Combine(cacheDirectory, settings.SourceName + ".rar");
+                var cacheArchivePath = Path.Combine(
+                    cacheDirectory,
+                    settings.SourceName + (settings.UseZip ? ".zip" : ".rar"));
 
                 try
                 {
-                    log.Report("开始压缩：" + settings.SourceDirectory);
-                    Report(progress, 0, 60, 0, "压缩");
+                    if (settings.UseZip)
+                    {
+                        log.Report("开始压缩为 ZIP：" + settings.SourceDirectory);
+                        await CreateZipArchiveAsync(
+                            settings,
+                            cacheArchivePath,
+                            0,
+                            60,
+                            progress,
+                            log,
+                            cancellationToken).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        log.Report("开始压缩：" + settings.SourceDirectory);
+                        Report(progress, 0, 60, 0, "压缩");
 
-                    var arguments = BuildArchiveArguments(settings, cacheArchivePath);
-                    await RunRarAsync(
-                        settings.WinRarPath,
-                        arguments,
-                        settings.SourceDirectory,
-                        0,
-                        60,
-                        progress,
-                        log,
-                        cancellationToken,
-                        "压缩").ConfigureAwait(false);
+                        var arguments = BuildArchiveArguments(settings, cacheArchivePath);
+                        await RunRarAsync(
+                            settings.WinRarPath,
+                            arguments,
+                            settings.SourceDirectory,
+                            0,
+                            60,
+                            progress,
+                            log,
+                            cancellationToken,
+                            "压缩").ConfigureAwait(false);
+                    }
 
                     if (!File.Exists(cacheArchivePath))
                         throw new InvalidOperationException("压缩完成但未生成归档文件");
@@ -135,6 +154,7 @@ namespace AppDataRebuilder
                 TargetDirectory = saveRecord.TargetDirectory,
                 BackupPath = saveRecord.BackupPath,
                 Compressed = saveRecord.Compressed,
+                UseZip = saveRecord.IsZipArchive,
                 Sha256 = saveRecord.Sha256,
                 CompressionLevel = saveRecord.CompressionLevel,
                 KeepTimestamps = saveRecord.KeepTimestamps,
@@ -147,15 +167,23 @@ namespace AppDataRebuilder
 
             if (saveRecord.Compressed)
             {
-                var toolPath = GetRestoreToolPath(settings);
-                if (string.IsNullOrWhiteSpace(toolPath) || !File.Exists(toolPath))
-                    throw new InvalidOperationException("未找到可用的 WinRAR / UnRAR 命令行工具");
+                var isZip = saveRecord.IsZipArchive;
+                string? toolPath = null;
 
                 if (!File.Exists(saveRecord.BackupPath))
                     throw new FileNotFoundException("备份归档不存在", saveRecord.BackupPath);
 
                 if (string.IsNullOrWhiteSpace(saveRecord.Sha256))
                     throw new InvalidOperationException("保存记录中没有 SHA256，无法校验归档");
+
+                if (!isZip)
+                {
+                    var resolvedToolPath = GetRestoreToolPath(settings);
+                    if (string.IsNullOrWhiteSpace(resolvedToolPath) || !File.Exists(resolvedToolPath))
+                        throw new InvalidOperationException("未找到可用的 WinRAR / UnRAR 命令行工具");
+
+                    toolPath = resolvedToolPath;
+                }
 
                 log.Report("校验备份归档 SHA256…");
                 Report(progress, 0, 10, 0, "校验归档");
@@ -193,30 +221,46 @@ namespace AppDataRebuilder
                     if (!string.Equals(cacheSha256, saveRecord.Sha256, StringComparison.OrdinalIgnoreCase))
                         throw new InvalidOperationException("缓存归档 SHA256 校验失败");
 
-                    log.Report("测试归档完整性…");
-                    await RunRarAsync(
-                        toolPath,
-                        new[] { "t", "-y", cacheArchivePath },
-                        cacheDirectory,
-                        30,
-                        10,
-                        progress,
-                        log,
-                        cancellationToken,
-                        "校验归档").ConfigureAwait(false);
+                    if (isZip)
+                    {
+                        log.Report("解压 ZIP 归档到缓存目录…");
+                        await ExtractZipArchiveAsync(
+                            cacheArchivePath,
+                            extractDirectory,
+                            saveRecord.KeepTimestamps,
+                            30,
+                            40,
+                            progress,
+                            log,
+                            cancellationToken).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        log.Report("测试归档完整性…");
+                        await RunRarAsync(
+                            toolPath!,
+                            new[] { "t", "-y", cacheArchivePath },
+                            cacheDirectory,
+                            30,
+                            10,
+                            progress,
+                            log,
+                            cancellationToken,
+                            "校验归档").ConfigureAwait(false);
 
-                    Directory.CreateDirectory(extractDirectory);
-                    log.Report("解压归档到缓存目录…");
-                    await RunRarAsync(
-                        toolPath,
-                        new[] { "x", "-y", "-o+", cacheArchivePath, extractDirectory + Path.DirectorySeparatorChar },
-                        cacheDirectory,
-                        40,
-                        30,
-                        progress,
-                        log,
-                        cancellationToken,
-                        "解压归档").ConfigureAwait(false);
+                        Directory.CreateDirectory(extractDirectory);
+                        log.Report("解压归档到缓存目录…");
+                        await RunRarAsync(
+                            toolPath!,
+                            new[] { "x", "-y", "-o+", cacheArchivePath, extractDirectory + Path.DirectorySeparatorChar },
+                            cacheDirectory,
+                            40,
+                            30,
+                            progress,
+                            log,
+                            cancellationToken,
+                            "解压归档").ConfigureAwait(false);
+                    }
 
                     log.Report("复制解压结果到恢复目录：" + settings.DestinationDirectory);
                     await RunRobocopyAsync(
@@ -271,8 +315,11 @@ namespace AppDataRebuilder
                 "-y",
                 $"-m{Math.Clamp(settings.CompressionLevel, 0, 5)}",
                 "-x" + ExcludedRelativePath,
-                "-t",
             };
+
+            // “测试压缩的文件”对应 RAR 的 -t；勾选“不测试压缩的文件”时不传该参数。
+            if (!settings.SkipArchiveTest)
+                arguments.Add("-t");
 
             if (settings.KeepTimestamps)
                 arguments.Add("-ts");
@@ -280,6 +327,290 @@ namespace AppDataRebuilder
             arguments.Add(archivePath);
             arguments.Add("*");
             return arguments;
+        }
+
+        private static async Task CreateZipArchiveAsync(
+            SaveJobSettings settings,
+            string archivePath,
+            int overallBase,
+            int overallSpan,
+            IProgress<OperationProgress> progress,
+            IProgress<string> log,
+            CancellationToken cancellationToken)
+        {
+            var files = new List<ZipFileEntry>();
+            var directories = new List<string>();
+            var pending = new Stack<string>();
+            pending.Push(settings.SourceDirectory);
+
+            while (pending.Count > 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var current = pending.Pop();
+
+                try
+                {
+                    foreach (var directory in Directory.EnumerateDirectories(current))
+                    {
+                        var relativePath = Path.GetRelativePath(settings.SourceDirectory, directory);
+                        if (IsExcludedArchivePath(relativePath))
+                            continue;
+
+                        directories.Add(relativePath);
+                        pending.Push(directory);
+                    }
+
+                    foreach (var file in Directory.EnumerateFiles(current))
+                    {
+                        var relativePath = Path.GetRelativePath(settings.SourceDirectory, file);
+                        if (IsExcludedArchivePath(relativePath))
+                            continue;
+
+                        try
+                        {
+                            files.Add(new ZipFileEntry(file, relativePath, new FileInfo(file).Length));
+                        }
+                        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                        {
+                            log.Report("跳过无法读取的文件：" + file);
+                        }
+                    }
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    log.Report("跳过无权限的目录：" + current);
+                }
+                catch (IOException ex)
+                {
+                    log.Report("跳过无法读取的目录：" + current + "：" + ex.Message);
+                }
+            }
+
+            files.Sort((left, right) => StringComparer.OrdinalIgnoreCase.Compare(left.RelativePath, right.RelativePath));
+            directories.Sort(StringComparer.OrdinalIgnoreCase);
+
+            var totalBytes = files.Sum(file => file.Length);
+            var compressionLevel = GetZipCompressionLevel(settings.CompressionLevel);
+            long processedBytes = 0;
+            var lastPercent = -1;
+
+            using var archiveStream = new FileStream(
+                archivePath,
+                FileMode.Create,
+                FileAccess.Write,
+                FileShare.None,
+                64 * 1024,
+                FileOptions.Asynchronous);
+
+            using var archive = new ZipArchive(archiveStream, ZipArchiveMode.Create);
+
+            foreach (var directory in directories)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var entry = archive.CreateEntry(directory.Replace('\\', '/').TrimEnd('/') + "/");
+                if (settings.KeepTimestamps)
+                    SetZipEntryTimestamp(entry, Directory.GetLastWriteTime(Path.Combine(settings.SourceDirectory, directory)));
+            }
+
+            foreach (var file in files)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var entry = archive.CreateEntry(file.RelativePath.Replace('\\', '/'), compressionLevel);
+                if (settings.KeepTimestamps)
+                    SetZipEntryTimestamp(entry, File.GetLastWriteTime(file.FullPath));
+
+                await using (var input = new FileStream(
+                    file.FullPath,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.Read,
+                    1024 * 1024,
+                    FileOptions.Asynchronous | FileOptions.SequentialScan))
+                await using (var output = entry.Open())
+                {
+                    var buffer = new byte[1024 * 1024];
+
+                    while (true)
+                    {
+                        var read = await input.ReadAsync(
+                            buffer.AsMemory(0, buffer.Length),
+                            cancellationToken).ConfigureAwait(false);
+
+                        if (read <= 0)
+                            break;
+
+                        await output.WriteAsync(
+                            buffer.AsMemory(0, read),
+                            cancellationToken).ConfigureAwait(false);
+
+                        processedBytes += read;
+
+                        if (totalBytes > 0)
+                        {
+                            var percent = (int)Math.Clamp(processedBytes * 100 / totalBytes, 0, 100);
+                            if (percent != lastPercent)
+                            {
+                                lastPercent = percent;
+                                Report(progress, overallBase, overallSpan, percent, "压缩");
+                            }
+                        }
+                    }
+                }
+            }
+
+            Report(progress, overallBase, overallSpan, 100, "压缩");
+        }
+
+        private static async Task ExtractZipArchiveAsync(
+            string archivePath,
+            string extractDirectory,
+            bool keepTimestamps,
+            int overallBase,
+            int overallSpan,
+            IProgress<OperationProgress> progress,
+            IProgress<string> log,
+            CancellationToken cancellationToken)
+        {
+            var rootDirectory = Path.GetFullPath(extractDirectory);
+            var rootPrefix = rootDirectory.TrimEnd(
+                Path.DirectorySeparatorChar,
+                Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+
+            Directory.CreateDirectory(rootDirectory);
+
+            await using var archiveStream = new FileStream(
+                archivePath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                64 * 1024,
+                FileOptions.Asynchronous | FileOptions.SequentialScan);
+
+            using var archive = new ZipArchive(archiveStream, ZipArchiveMode.Read);
+
+            var fileEntries = archive.Entries
+                .Where(entry => entry.Name.Length > 0)
+                .ToList();
+            var totalBytes = fileEntries.Sum(entry => entry.Length);
+            long processedBytes = 0;
+            var lastPercent = -1;
+
+            foreach (var entry in archive.Entries)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var relativePath = entry.FullName
+                    .Replace('/', Path.DirectorySeparatorChar)
+                    .TrimStart(Path.DirectorySeparatorChar);
+
+                if (relativePath.Length == 0)
+                    continue;
+
+                var destinationPath = Path.GetFullPath(Path.Combine(rootDirectory, relativePath));
+                if (!destinationPath.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(destinationPath, rootDirectory, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidDataException("ZIP 归档包含越界路径：" + entry.FullName);
+                }
+
+                if (entry.Name.Length == 0)
+                {
+                    Directory.CreateDirectory(destinationPath);
+                    continue;
+                }
+
+                var destinationDirectory = Path.GetDirectoryName(destinationPath);
+                if (!string.IsNullOrEmpty(destinationDirectory))
+                    Directory.CreateDirectory(destinationDirectory);
+
+                await using (var input = entry.Open())
+                await using (var output = new FileStream(
+                    destinationPath,
+                    FileMode.Create,
+                    FileAccess.Write,
+                    FileShare.None,
+                    1024 * 1024,
+                    FileOptions.Asynchronous | FileOptions.SequentialScan))
+                {
+                    var buffer = new byte[1024 * 1024];
+
+                    while (true)
+                    {
+                        var read = await input.ReadAsync(
+                            buffer.AsMemory(0, buffer.Length),
+                            cancellationToken).ConfigureAwait(false);
+
+                        if (read <= 0)
+                            break;
+
+                        await output.WriteAsync(
+                            buffer.AsMemory(0, read),
+                            cancellationToken).ConfigureAwait(false);
+
+                        processedBytes += read;
+
+                        if (totalBytes > 0)
+                        {
+                            var percent = (int)Math.Clamp(processedBytes * 100 / totalBytes, 0, 100);
+                            if (percent != lastPercent)
+                            {
+                                lastPercent = percent;
+                                Report(progress, overallBase, overallSpan, percent, "解压");
+                            }
+                        }
+                    }
+                }
+
+                if (keepTimestamps)
+                    TrySetExtractedTimestamp(destinationPath, entry.LastWriteTime, log);
+            }
+
+            Report(progress, overallBase, overallSpan, 100, "解压");
+        }
+
+        private static void TrySetExtractedTimestamp(
+            string path,
+            DateTimeOffset timestamp,
+            IProgress<string> log)
+        {
+            if (timestamp.Year is < 1980 or > 2107)
+                return;
+
+            try
+            {
+                File.SetLastWriteTime(path, timestamp.LocalDateTime);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentOutOfRangeException)
+            {
+                log.Report("无法恢复时间戳：" + path);
+            }
+        }
+
+        private static CompressionLevel GetZipCompressionLevel(int level)
+        {
+            return Math.Clamp(level, 0, 5) switch
+            {
+                0 => CompressionLevel.NoCompression,
+                1 or 2 => CompressionLevel.Fastest,
+                3 or 4 => CompressionLevel.Optimal,
+                _ => CompressionLevel.SmallestSize,
+            };
+        }
+
+        private static void SetZipEntryTimestamp(ZipArchiveEntry entry, DateTime timestamp)
+        {
+            // ZIP 的 DOS 时间范围是 1980-2107，超出范围时保留默认时间。
+            if (timestamp.Year is >= 1980 and <= 2107)
+                entry.LastWriteTime = new DateTimeOffset(timestamp);
+        }
+
+        private static bool IsExcludedArchivePath(string relativePath)
+        {
+            var normalized = relativePath.Replace('/', '\\').Trim('\\');
+            return string.Equals(normalized, ExcludedRelativePath, StringComparison.OrdinalIgnoreCase)
+                || normalized.StartsWith(ExcludedRelativePath + "\\", StringComparison.OrdinalIgnoreCase);
         }
 
         private static string? GetRestoreToolPath(RestoreJobSettings settings)
@@ -532,5 +863,7 @@ namespace AppDataRebuilder
                 || line.Contains("cannot", StringComparison.OrdinalIgnoreCase)
                 || line.Contains("access denied", StringComparison.OrdinalIgnoreCase);
         }
+
+        private readonly record struct ZipFileEntry(string FullPath, string RelativePath, long Length);
     }
 }

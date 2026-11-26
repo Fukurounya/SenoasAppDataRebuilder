@@ -92,6 +92,8 @@ namespace AppDataRebuilder
         public MainWindow()
         {
             InitializeComponent();
+            CompressOF.CheckedChanged += ArchiveOption_CheckedChanged;
+            UpdateArchiveOptionState();
             _startupReadyTimer.Tick += StartupReadyTimer_Tick;
             _transientStatusTimer.Tick += TransientStatusTimer_Tick;
             MainStatusBar.MouseEnter += StatusBar_MouseEnter;
@@ -185,6 +187,18 @@ namespace AppDataRebuilder
             CompassLv.TickFrequency = 1;
             CompassLv.Value = Math.Clamp(CompassLv.Value, CompassLv.Minimum, CompassLv.Maximum);
             UpdateCompressionLevelText();
+        }
+
+        /// <summary>
+        /// 未启用压缩时，ZIP 格式、测试开关和压缩级别都不可用。
+        /// </summary>
+        private void UpdateArchiveOptionState()
+        {
+            var compress = CompressOF.Checked;
+            zipOF.Enabled = compress;
+            disYOF.Enabled = compress;
+            CompassLv.Enabled = compress;
+            CompassLvText.Enabled = compress;
         }
 
         private void InitializeTemporaryDirectory()
@@ -1430,8 +1444,9 @@ namespace AppDataRebuilder
             }
 
             var compress = CompressOF.Checked;
+            var useZip = compress && zipOF.Checked;
             var backupPath = compress
-                ? Path.Combine(targetDirectory, sourceName + ".rar")
+                ? Path.Combine(targetDirectory, sourceName + (useZip ? ".zip" : ".rar"))
                 : Path.Combine(targetDirectory, sourceName);
 
             if (FileSystemUtility.PathsOverlap(backupPath, sourceDirectory))
@@ -1474,6 +1489,8 @@ namespace AppDataRebuilder
                 TargetDirectory = targetDirectory,
                 BackupPath = backupPath,
                 Compress = compress,
+                UseZip = useZip,
+                SkipArchiveTest = disYOF.Checked,
                 CompressionLevel = CompassLv.Value,
                 KeepTimestamps = TimestampOF.Checked || FilestampOF.Checked,
                 KeepFileAttributes = FilestampOF.Checked,
@@ -1908,6 +1925,11 @@ namespace AppDataRebuilder
             {
                 // 无权限删除。
             }
+        }
+
+        private void ArchiveOption_CheckedChanged(object? sender, EventArgs e)
+        {
+            UpdateArchiveOptionState();
         }
     }
 }

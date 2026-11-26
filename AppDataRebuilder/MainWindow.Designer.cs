@@ -52,6 +52,8 @@ namespace AppDataRebuilder
             ComboBoxSelect = new ComboBox();
             StartRebuildBT = new Button();
             StartSaveBT = new Button();
+            zipOF = new CheckBox();
+            disYOF = new CheckBox();
             MainStatusBar.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)CompassLv).BeginInit();
             SuspendLayout();
@@ -115,6 +117,8 @@ namespace AppDataRebuilder
             // TimestampOF
             // 
             TimestampOF.AutoSize = true;
+            TimestampOF.Checked = true;
+            TimestampOF.CheckState = CheckState.Checked;
             TimestampOF.Location = new Point(21, 184);
             TimestampOF.Name = "TimestampOF";
             TimestampOF.Size = new Size(87, 21);
@@ -126,6 +130,8 @@ namespace AppDataRebuilder
             // FilestampOF
             // 
             FilestampOF.AutoSize = true;
+            FilestampOF.Checked = true;
+            FilestampOF.CheckState = CheckState.Checked;
             FilestampOF.Location = new Point(116, 184);
             FilestampOF.Name = "FilestampOF";
             FilestampOF.Size = new Size(123, 21);
@@ -140,6 +146,7 @@ namespace AppDataRebuilder
             MainStatusBar.Location = new Point(0, 314);
             MainStatusBar.Name = "MainStatusBar";
             MainStatusBar.Size = new Size(466, 22);
+            MainStatusBar.SizingGrip = false;
             MainStatusBar.TabIndex = 12;
             MainStatusBar.Text = "statusStrip1";
             // 
@@ -184,6 +191,8 @@ namespace AppDataRebuilder
             // CompressOF
             // 
             CompressOF.AutoSize = true;
+            CompressOF.Checked = true;
+            CompressOF.CheckState = CheckState.Checked;
             CompressOF.Location = new Point(21, 223);
             CompressOF.Name = "CompressOF";
             CompressOF.Size = new Size(51, 21);
@@ -222,9 +231,9 @@ namespace AppDataRebuilder
             // 
             // StartRebuildBT
             // 
-            StartRebuildBT.Location = new Point(78, 262);
+            StartRebuildBT.Location = new Point(248, 262);
             StartRebuildBT.Name = "StartRebuildBT";
-            StartRebuildBT.Size = new Size(150, 37);
+            StartRebuildBT.Size = new Size(100, 37);
             StartRebuildBT.TabIndex = 18;
             StartRebuildBT.Text = "开始恢复";
             StartRebuildBT.UseVisualStyleBackColor = true;
@@ -232,13 +241,34 @@ namespace AppDataRebuilder
             // 
             // StartSaveBT
             // 
-            StartSaveBT.Location = new Point(266, 262);
+            StartSaveBT.Location = new Point(354, 262);
             StartSaveBT.Name = "StartSaveBT";
-            StartSaveBT.Size = new Size(106, 37);
+            StartSaveBT.Size = new Size(100, 37);
             StartSaveBT.TabIndex = 19;
             StartSaveBT.Text = "开始保存";
             StartSaveBT.UseVisualStyleBackColor = true;
             StartSaveBT.Click += StartSaveBT_Click;
+            // 
+            // zipOF
+            // 
+            zipOF.AutoSize = true;
+            zipOF.Location = new Point(21, 271);
+            zipOF.Name = "zipOF";
+            zipOF.Size = new Size(93, 21);
+            zipOF.TabIndex = 20;
+            zipOF.Text = "使用ZIP格式";
+            zipOF.UseVisualStyleBackColor = true;
+            zipOF.CheckedChanged += ArchiveOption_CheckedChanged;
+            // 
+            // disYOF
+            // 
+            disYOF.AutoSize = true;
+            disYOF.Location = new Point(116, 271);
+            disYOF.Name = "disYOF";
+            disYOF.Size = new Size(123, 21);
+            disYOF.TabIndex = 21;
+            disYOF.Text = "不测试压缩的文件";
+            disYOF.UseVisualStyleBackColor = true;
             // 
             // MainWindow
             // 
@@ -246,6 +276,8 @@ namespace AppDataRebuilder
             AutoScaleMode = AutoScaleMode.Font;
             BackgroundImageLayout = ImageLayout.None;
             ClientSize = new Size(466, 336);
+            Controls.Add(disYOF);
+            Controls.Add(zipOF);
             Controls.Add(StartSaveBT);
             Controls.Add(StartRebuildBT);
             Controls.Add(ComboBoxSelect);
@@ -262,9 +294,12 @@ namespace AppDataRebuilder
             Controls.Add(SDinputbox);
             Controls.Add(TDSelectBT);
             Controls.Add(SDSelectBT);
+            FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             Name = "MainWindow";
             ShowIcon = false;
+            SizeGripStyle = SizeGripStyle.Hide;
+            StartPosition = FormStartPosition.CenterScreen;
             Text = "App UserData ReBuilder";
             Load += MainWindow_Load;
             MainStatusBar.ResumeLayout(false);
@@ -298,5 +333,7 @@ namespace AppDataRebuilder
         private ComboBox ComboBoxSelect;
         private Button StartRebuildBT;
         private Button StartSaveBT;
+        private CheckBox zipOF;
+        private CheckBox disYOF;
     }
 }

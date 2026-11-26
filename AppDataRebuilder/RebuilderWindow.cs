@@ -152,7 +152,7 @@ namespace AppDataRebuilder
             AppendLog("目标目录：" + record.TargetDirectory);
             AppendLog("备份文件：" + record.BackupPath);
             AppendLog("压缩：" + (record.Compressed
-                ? "是（" + record.CompressionLevelText + "）"
+                ? $"是（{record.CompressionLevelText}，{record.ArchiveFormatText}）"
                 : "否"));
             AppendLog("保留时间戳：" + (record.KeepTimestamps ? "是" : "否"));
             AppendLog("保留完整文件属性：" + (record.KeepFileAttributes ? "是" : "否"));
@@ -175,6 +175,7 @@ namespace AppDataRebuilder
                 TargetDirectory = saveRecord.TargetDirectory,
                 BackupPath = saveRecord.BackupPath,
                 Compressed = saveRecord.Compressed,
+                UseZip = saveRecord.IsZipArchive,
                 Sha256 = saveRecord.Sha256,
                 CompressionLevel = saveRecord.CompressionLevel,
                 KeepTimestamps = saveRecord.KeepTimestamps,

@@ -77,7 +77,11 @@ namespace AppDataRebuilder
             log.Report($"目标目录：{_settings.TargetDirectory}");
             log.Report(_settings.Compress
                 ? $"压缩方式：{OperationRecord.GetCompressionLevelText(_settings.CompressionLevel)}"
+                    + $"（{(_settings.UseZip ? "ZIP" : "RAR")}）"
                 : "压缩方式：不压缩");
+
+            if (_settings.Compress && _settings.SkipArchiveTest)
+                log.Report("不测试压缩的文件");
 
             try
             {
@@ -148,6 +152,7 @@ namespace AppDataRebuilder
                 TargetDirectory = _settings.TargetDirectory,
                 BackupPath = _settings.BackupPath,
                 Compressed = _settings.Compress,
+                UseZip = _settings.UseZip,
                 CompressionLevel = _settings.CompressionLevel,
                 KeepTimestamps = _settings.KeepTimestamps,
                 KeepFileAttributes = _settings.KeepFileAttributes,

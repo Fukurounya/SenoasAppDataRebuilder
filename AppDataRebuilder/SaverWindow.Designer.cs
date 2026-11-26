@@ -83,17 +83,19 @@
             // 
             AutoScaleDimensions = new SizeF(7F, 17F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(484, 261);
+            ClientSize = new Size(480, 257);
             ControlBox = false;
             Controls.Add(MinimizeBT);
             Controls.Add(CancalBT);
             Controls.Add(WorkflowTextBox);
             Controls.Add(HighProgress);
             Controls.Add(LowProgress);
+            FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             MinimizeBox = false;
             Name = "SaverWindow";
             ShowIcon = false;
+            SizeGripStyle = SizeGripStyle.Hide;
             Text = "正在恢复到目标目录";
             ResumeLayout(false);
             PerformLayout();

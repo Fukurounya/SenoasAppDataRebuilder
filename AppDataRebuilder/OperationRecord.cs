@@ -30,14 +30,27 @@ namespace AppDataRebuilder
         /// <summary>保存时的目标储存根目录。</summary>
         public string TargetDirectory { get; set; } = string.Empty;
 
-        /// <summary>压缩时为 .rar 完整路径；不压缩时为备份文件夹完整路径。</summary>
+        /// <summary>压缩时为 .rar 或 .zip 完整路径；不压缩时为备份文件夹完整路径。</summary>
         public string BackupPath { get; set; } = string.Empty;
 
         public bool Compressed { get; set; }
+
+        /// <summary>压缩时是否使用 ZIP 格式；仅 Compressed 为 true 时有意义。</summary>
+        public bool UseZip { get; set; }
+
         public string? Sha256 { get; set; }
         public int CompressionLevel { get; set; }
         public bool KeepTimestamps { get; set; }
         public bool KeepFileAttributes { get; set; }
+
+        /// <summary>
+        /// 是否为 ZIP 归档。旧版 Data 没有 UseZip 时按 .zip 扩展名判断。
+        /// </summary>
+        public bool IsZipArchive => Compressed
+            && (UseZip
+                || string.Equals(Path.GetExtension(BackupPath), ".zip", StringComparison.OrdinalIgnoreCase));
+
+        public string ArchiveFormatText => IsZipArchive ? "ZIP" : "RAR";
 
         /// <summary>恢复操作实际写入的目录；保存操作为空。</summary>
         public string? RestoreDestination { get; set; }
@@ -68,6 +81,7 @@ namespace AppDataRebuilder
                 TargetDirectory = TargetDirectory,
                 BackupPath = BackupPath,
                 Compressed = Compressed,
+                UseZip = UseZip,
                 Sha256 = Sha256,
                 CompressionLevel = CompressionLevel,
                 KeepTimestamps = KeepTimestamps,
@@ -90,6 +104,11 @@ namespace AppDataRebuilder
         public string TargetDirectory { get; init; } = string.Empty;
         public string BackupPath { get; init; } = string.Empty;
         public bool Compress { get; init; }
+        public bool UseZip { get; init; }
+
+        /// <summary>勾选“不测试压缩的文件”时为 true，保存时不传 -t。</summary>
+        public bool SkipArchiveTest { get; init; }
+
         public int CompressionLevel { get; init; }
         public bool KeepTimestamps { get; init; }
         public bool KeepFileAttributes { get; init; }
