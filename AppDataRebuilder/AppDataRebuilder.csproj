@@ -9,8 +9,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- 运行时需要在程序目录找到随附的 UnRAR。 -->
-    <None Update="UnRAR.exe" CopyToOutputDirectory="PreserveNewest" />
+    <!-- 运行时需要在程序目录找到随附的 UnRAR，同时把同一份文件嵌入程序集作为兜底。 -->
+    <None Update="UnRAR.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <EmbeddedResource Include="UnRAR.exe" LogicalName="AppDataRebuilder.UnRAR.exe" />
 
     <!-- radarlist 直接编译进程序集，运行时不再依赖外部副本。 -->
     <None Remove="radarlist" />

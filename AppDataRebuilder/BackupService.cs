@@ -36,8 +36,12 @@ namespace AppDataRebuilder
 
             if (settings.Compress)
             {
-                if (string.IsNullOrWhiteSpace(settings.WinRarPath) || !File.Exists(settings.WinRarPath))
-                    throw new InvalidOperationException("未找到可用的 WinRAR 命令行工具");
+                // ZIP 由 .NET 生成，不依赖 WinRAR；只有 RAR 压缩需要 WinRAR。
+                if (!settings.UseZip
+                    && (string.IsNullOrWhiteSpace(settings.WinRarPath) || !File.Exists(settings.WinRarPath)))
+                {
+                    throw new InvalidOperationException("RAR 压缩需要 WinRAR，但未找到 WinRAR 命令行工具");
+                }
 
                 var cacheDirectory = Path.Combine(settings.CacheRoot, settings.JobId.ToString("N"));
                 Directory.CreateDirectory(cacheDirectory);
@@ -66,7 +70,7 @@ namespace AppDataRebuilder
 
                         var arguments = BuildArchiveArguments(settings, cacheArchivePath);
                         await RunRarAsync(
-                            settings.WinRarPath,
+                            settings.WinRarPath!,
                             arguments,
                             settings.SourceDirectory,
                             0,
@@ -615,20 +619,16 @@ namespace AppDataRebuilder
 
         private static string? GetRestoreToolPath(RestoreJobSettings settings)
         {
-            // Rar.exe 是最稳定的命令行选择；没有 Rar.exe 时优先使用随附 UnRAR，
-            // 最后才退回 WinRAR.exe 后台模式。
+            // WinRAR / Rar.exe 始终优先；UnRAR 只在 WinRAR 命令行不可用时回退。
             if (!string.IsNullOrWhiteSpace(settings.RarPath)
-                && string.Equals(Path.GetFileName(settings.RarPath), "Rar.exe", StringComparison.OrdinalIgnoreCase)
-                && File.Exists(settings.RarPath))
+                && File.Exists(settings.RarPath)
+                && !IsUnRarExe(settings.RarPath))
             {
                 return settings.RarPath;
             }
 
             if (!string.IsNullOrWhiteSpace(settings.UnRarPath) && File.Exists(settings.UnRarPath))
                 return settings.UnRarPath;
-
-            if (!string.IsNullOrWhiteSpace(settings.RarPath) && File.Exists(settings.RarPath))
-                return settings.RarPath;
 
             return null;
         }
@@ -852,6 +852,9 @@ namespace AppDataRebuilder
 
         private static bool IsWinRarExe(string toolPath)
             => string.Equals(Path.GetFileName(toolPath), "WinRAR.exe", StringComparison.OrdinalIgnoreCase);
+
+        private static bool IsUnRarExe(string toolPath)
+            => string.Equals(Path.GetFileName(toolPath), "UnRAR.exe", StringComparison.OrdinalIgnoreCase);
 
         private static bool LooksLikeProblem(string line)
         {

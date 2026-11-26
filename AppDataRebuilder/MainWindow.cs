@@ -37,7 +37,7 @@ namespace AppDataRebuilder
         private CancellationTokenSource? _autoFindCancellation;
         private DirectorySource _directorySource = DirectorySource.History;
         private StatusMode _statusMode = StatusMode.Idle;
-        private bool _saveAllowed;
+        private bool _toolCheckCompleted;
         private bool _autoFindRunning;
         private bool _suppressComboEvents;
         private bool _suppressSourceTextChanged;
@@ -72,7 +72,10 @@ namespace AppDataRebuilder
         /// <summary>程序目录下 UnRAR 的路径，供恢复窗口使用。</summary>
         public static string? UnRarPath { get; private set; }
 
-        /// <summary>WinRAR 可用时才允许压缩保存。</summary>
+        /// <summary>程序集内是否打包了 UnRAR.exe。</summary>
+        public static bool UnRarEmbeddedAvailable { get; private set; }
+
+        /// <summary>RAR 压缩保存需要 WinRAR。</summary>
         public static bool CanSaveCompressed => WinRarPath is not null;
 
         private enum DirectorySource
@@ -199,6 +202,48 @@ namespace AppDataRebuilder
             disYOF.Enabled = compress;
             CompassLv.Enabled = compress;
             CompassLvText.Enabled = compress;
+
+            UpdateSaveAvailability();
+        }
+
+        /// <summary>
+        /// 不压缩和 ZIP 保存不依赖 WinRAR；只有 RAR 压缩保存需要 WinRAR。
+        /// </summary>
+        private bool CanSaveNow()
+        {
+            if (!_toolCheckCompleted)
+                return false;
+
+            if (!CompressOF.Checked || zipOF.Checked)
+                return true;
+
+            return !string.IsNullOrWhiteSpace(WinRarPath) && File.Exists(WinRarPath);
+        }
+
+        private void UpdateSaveAvailability()
+        {
+            if (IsDisposed)
+                return;
+
+            StartSaveBT.Enabled = CanSaveNow();
+        }
+
+        private string GetSaveAvailabilityText()
+        {
+            if (!_toolCheckCompleted)
+                return "检测中";
+
+            return CanSaveNow()
+                ? "可用"
+                : "已禁用（RAR 压缩需要 WinRAR）";
+        }
+
+        private static string GetUnRarDisplayText()
+        {
+            if (!string.IsNullOrWhiteSpace(UnRarPath))
+                return UnRarPath;
+
+            return UnRarEmbeddedAvailable ? "嵌入资源（按需释放）" : "未找到";
         }
 
         private void InitializeTemporaryDirectory()
@@ -252,25 +297,30 @@ namespace AppDataRebuilder
         {
             WinRarPath = winRarPath;
             UnRarPath = unRarPath;
-            _saveAllowed = winRarPath is not null;
-
-            // 功能与按钮同时禁用；点击事件里还会再次校验。
-            StartSaveBT.Enabled = _saveAllowed;
+            UnRarEmbeddedAvailable = RarToolLocator.HasEmbeddedUnRar();
+            _toolCheckCompleted = true;
 
             _warningMessage = null;
             _warningDetails.Clear();
 
             if (winRarPath is null)
             {
-                _warningMessage = unRarPath is not null
-                    ? "未找到 WinRAR，已使用 UnRAR，保存功能已禁用"
-                    : "未找到 WinRAR / UnRAR，保存与解压均不可用";
+                var hasUnRar = unRarPath is not null || UnRarEmbeddedAvailable;
+
+                _warningMessage = hasUnRar
+                    ? "未找到 WinRAR，RAR 压缩不可用"
+                    : "未找到 WinRAR / UnRAR，RAR 压缩与解压不可用";
+
+                _warningDetails.Add(hasUnRar
+                    ? "不压缩或 ZIP 保存仍可用"
+                    : "不压缩或 ZIP 保存、恢复仍可用");
             }
             else
             {
                 _warningDetails.Add("WinRAR 命令行：" + winRarPath);
             }
 
+            UpdateSaveAvailability();
             UpdateStatusToolTip();
             RestoreBaseStatus();
         }
@@ -282,8 +332,8 @@ namespace AppDataRebuilder
                 "Data 文件：" + (_dataStore?.FilePath ?? DataStore.GetDefaultPath()),
                 "radarlist：" + GetRadarListSourceDescription(),
                 "WinRAR：" + (WinRarPath ?? "未找到"),
-                "UnRAR：" + (UnRarPath ?? "未找到"),
-                "开始保存：" + (_saveAllowed ? "可用" : "已禁用"),
+                "UnRAR：" + GetUnRarDisplayText(),
+                "开始保存：" + GetSaveAvailabilityText(),
             };
 
             if (!string.IsNullOrEmpty(_dataStoreError))
@@ -836,7 +886,7 @@ namespace AppDataRebuilder
                 // 允许选择已删除的历史目录；恢复时 BackupService 会重新创建目标目录。
                 ShowTemporaryStatus(
                     record is not null
-                        ? "该目录已不存在，已匹配保存记录；恢复时会自动创建"
+                        ? "该目录已不存在，恢复时会自动创建"
                         : "该目录已不存在，没有找到对应保存记录",
                     true,
                     5000);
@@ -1408,9 +1458,21 @@ namespace AppDataRebuilder
 
         private async void StartSaveBT_Click(object? sender, EventArgs e)
         {
-            if (!_saveAllowed)
+            if (!_toolCheckCompleted)
             {
-                ShowTemporaryStatus("未找到 WinRAR 命令行工具，无法开始保存", true, 5000);
+                ShowTemporaryStatus("正在检测压缩工具，请稍后再试", true, 5000);
+                return;
+            }
+
+            var compress = CompressOF.Checked;
+            var useZip = compress && zipOF.Checked;
+
+            if (compress && !useZip && !CanSaveNow())
+            {
+                ShowTemporaryStatus(
+                    "RAR 压缩需要 WinRAR，请取消压缩或改用 ZIP",
+                    true,
+                    6000);
                 return;
             }
 
@@ -1443,8 +1505,6 @@ namespace AppDataRebuilder
                 return;
             }
 
-            var compress = CompressOF.Checked;
-            var useZip = compress && zipOF.Checked;
             var backupPath = compress
                 ? Path.Combine(targetDirectory, sourceName + (useZip ? ".zip" : ".rar"))
                 : Path.Combine(targetDirectory, sourceName);
@@ -1574,6 +1634,11 @@ namespace AppDataRebuilder
                 return;
             }
 
+            var winRarUsable = !string.IsNullOrWhiteSpace(WinRarPath) && File.Exists(WinRarPath);
+            var unRarPath = UnRarPath;
+            if (!string.IsNullOrWhiteSpace(unRarPath) && !File.Exists(unRarPath))
+                unRarPath = null;
+
             if (!FileSystemUtility.PathsEqual(destinationDirectory, saveRecord.SourceDirectory)
                 && !_awaitingDifferentDirectoryConfirmation)
             {
@@ -1594,9 +1659,26 @@ namespace AppDataRebuilder
                     return;
                 }
 
-                if (WinRarPath is null && UnRarPath is null)
+                // 只有 RAR 恢复且 WinRAR 不可用时，才按需释放程序集内的 UnRAR。
+                if (!saveRecord.IsZipArchive
+                    && !winRarUsable
+                    && string.IsNullOrWhiteSpace(unRarPath)
+                    && UnRarEmbeddedAvailable)
                 {
-                    ShowTemporaryStatus("缺少 WinRAR / UnRAR，无法解压恢复", true, 6000);
+                    unRarPath = RarToolLocator.ExtractEmbeddedUnRar(Path.Combine(tempDirectory, "Tools"));
+                    if (unRarPath is null)
+                    {
+                        ShowTemporaryStatus("无法释放内置 UnRAR，RAR 归档无法解压", true, 6000);
+                        return;
+                    }
+
+                    UnRarPath = unRarPath;
+                    UpdateStatusToolTip();
+                }
+
+                if (!saveRecord.IsZipArchive && !winRarUsable && string.IsNullOrWhiteSpace(unRarPath))
+                {
+                    ShowTemporaryStatus("RAR 归档需要 WinRAR / UnRAR，无法解压恢复", true, 6000);
                     return;
                 }
             }
@@ -1637,7 +1719,7 @@ namespace AppDataRebuilder
                 DestinationDirectory = destinationDirectory,
                 CacheRoot = GetCacheRoot(),
                 RarPath = WinRarPath,
-                UnRarPath = UnRarPath,
+                UnRarPath = unRarPath,
             };
 
             string? openError = null;
@@ -1811,8 +1893,8 @@ namespace AppDataRebuilder
                 "Data 文件：" + (_dataStore?.FilePath ?? DataStore.GetDefaultPath()),
                 "radarlist：" + GetRadarListSourceDescription(),
                 "WinRAR：" + (WinRarPath ?? "未找到"),
-                "UnRAR：" + (UnRarPath ?? "未找到"),
-                "开始保存：" + (_saveAllowed ? "可用" : "已禁用"),
+                "UnRAR：" + GetUnRarDisplayText(),
+                "开始保存：" + GetSaveAvailabilityText(),
             };
 
             if (!string.IsNullOrEmpty(_dataStoreError))
@@ -1930,6 +2012,7 @@ namespace AppDataRebuilder
         private void ArchiveOption_CheckedChanged(object? sender, EventArgs e)
         {
             UpdateArchiveOptionState();
+            UpdateStatusToolTip();
         }
     }
 }

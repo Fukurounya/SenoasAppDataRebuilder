@@ -8,6 +8,8 @@ namespace AppDataRebuilder
     /// </summary>
     internal static class RarToolLocator
     {
+        public const string UnRarResourceName = "AppDataRebuilder.UnRAR.exe";
+
         private static readonly string[] AppPathRegistryKeys =
         {
             @"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\WinRAR.exe",
@@ -60,27 +62,120 @@ namespace AppDataRebuilder
 
         /// <summary>
         /// 返回程序目录下 UnRAR.exe 的完整路径；未找到时返回 null。
+        /// 只检查程序自身目录，不搜索当前工作目录或任意子目录。
         /// </summary>
         public static string? FindUnRarPath(string? baseDirectory)
         {
-            if (string.IsNullOrWhiteSpace(baseDirectory))
-                return null;
-
-            foreach (var fileName in new[] { "UnRAR.exe", "unrar.exe" })
+            foreach (var directory in EnumerateUnRarDirectories(baseDirectory))
             {
-                try
+                foreach (var fileName in new[] { "UnRAR.exe", "unrar.exe" })
                 {
-                    var path = Path.Combine(baseDirectory, fileName);
-                    if (File.Exists(path))
-                        return Path.GetFullPath(path);
-                }
-                catch (Exception ex) when (ex is ArgumentException or IOException or NotSupportedException)
-                {
-                    // 忽略无效目录，继续尝试其他候选名。
+                    try
+                    {
+                        var path = Path.Combine(directory, fileName);
+                        if (File.Exists(path))
+                            return Path.GetFullPath(path);
+                    }
+                    catch (Exception ex) when (ex is ArgumentException or IOException or NotSupportedException)
+                    {
+                        // 忽略无效目录，继续尝试其他候选名。
+                    }
                 }
             }
 
             return null;
+        }
+
+        /// <summary>程序集中是否打包了 UnRAR.exe。</summary>
+        public static bool HasEmbeddedUnRar()
+        {
+            try
+            {
+                using var stream = typeof(RarToolLocator).Assembly
+                    .GetManifestResourceStream(UnRarResourceName);
+                return stream is not null;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 仅在确实需要 UnRAR 时，把程序集内的 UnRAR.exe 释放到指定目录。
+        /// 返回释放后的完整路径；没有嵌入资源或释放失败时返回 null。
+        /// </summary>
+        public static string? ExtractEmbeddedUnRar(string? targetDirectory)
+        {
+            if (string.IsNullOrWhiteSpace(targetDirectory))
+                return null;
+
+            try
+            {
+                Directory.CreateDirectory(targetDirectory);
+                var path = Path.Combine(targetDirectory, "UnRAR.exe");
+                if (File.Exists(path))
+                    return Path.GetFullPath(path);
+
+                using var stream = typeof(RarToolLocator).Assembly
+                    .GetManifestResourceStream(UnRarResourceName);
+                if (stream is null)
+                    return null;
+
+                var temporaryPath = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                try
+                {
+                    using (var output = new FileStream(
+                        temporaryPath,
+                        FileMode.CreateNew,
+                        FileAccess.Write,
+                        FileShare.None))
+                    {
+                        stream.CopyTo(output);
+                    }
+
+                    File.Move(temporaryPath, path, overwrite: true);
+                    return Path.GetFullPath(path);
+                }
+                finally
+                {
+                    try
+                    {
+                        if (File.Exists(temporaryPath))
+                            File.Delete(temporaryPath);
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        // 临时文件清理失败不阻塞结果。
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
+            {
+                return null;
+            }
+        }
+
+        private static IEnumerable<string> EnumerateUnRarDirectories(string? baseDirectory)
+        {
+            var directory = string.IsNullOrWhiteSpace(baseDirectory)
+                ? AppContext.BaseDirectory
+                : baseDirectory;
+
+            if (string.IsNullOrWhiteSpace(directory))
+                yield break;
+
+            string fullPath;
+            try
+            {
+                fullPath = Path.GetFullPath(directory);
+            }
+            catch (Exception ex) when (ex is ArgumentException or IOException or NotSupportedException or System.Security.SecurityException)
+            {
+                yield break;
+            }
+
+            yield return fullPath;
         }
 
         private static IEnumerable<string?> EnumerateRegistryCandidates()
